@@ -34,6 +34,7 @@ BOOL CALLBACK EnumWindowsProc(
             puts("GetDlgItem: 无效的对话框句柄或不存在的控件");
             return 1;
         }
+        ShowWindow(hwnd, SW_MINIMIZE);
         //system("pause");
         SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_COMMAND1, BN_CLICKED), 0);
 
@@ -68,5 +69,8 @@ int main()
     puts("请输入进行的操作（0 = install，1 = update）");
     scanf("%hd", &type);
 
-    return RunVentoy2Disk(n, type);
+    HMODULE hmod = LoadLibraryA("msg2ventoy.exe");
+    int (*r)(unsigned short, unsigned short) = (int(*)(unsigned short, unsigned short))GetProcAddress(hmod, "RunVentoy2Disk");
+    
+    return r(n, type);
 }
