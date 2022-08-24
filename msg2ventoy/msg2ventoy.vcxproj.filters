@@ -20,7 +20,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="export.h">
+    <ClInclude Include="detours.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

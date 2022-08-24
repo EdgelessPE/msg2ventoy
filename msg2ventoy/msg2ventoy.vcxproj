@@ -146,7 +146,7 @@
     <ClCompile Include="msg2ventoy.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="export.h" />
+    <ClInclude Include="detours.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
