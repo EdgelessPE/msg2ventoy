@@ -4,9 +4,6 @@
 #include <stdint.h>
 #include <Windows.h>
 
-#include "detours.h"
-#pragma comment(lib, "detours.lib")
-
 
 #define INSTALL 0
 #define UPDATE  1
@@ -19,19 +16,16 @@ HWND hCombox;
 #define IDC_COMMAND1                    1024
 
 typedef int (WINAPI* PMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
-typedef void (* PCallerCallback)(int CurrentProgress);
+typedef int (* PCallerCallback)(int CurrentProgress);
 
-#pragma data_seg("SHARED") 
-PCallerCallback g_CallerCallback = NULL;
-HHOOK hV2DHook = NULL;
-#pragma data_seg()         
-#pragma comment(linker, "/section:SHARED,RWS")
 
 LRESULT CALLBACK V2DHookProc(int code, WPARAM wParam, LPARAM lParam)
 {
     //TODO: 获取并输出进度
     //TODO: 拦截MessageBoxW
     //DialogBox(g_hInst, MAKEINTRESOURCE(IDD_DIALOG2), hWnd, PartDialogProc); 输yes的确认框
+    puts("in hook proc");
+    getchar();
 
     return CallNextHookEx(NULL, code, wParam, lParam);
 }
@@ -70,7 +64,10 @@ BOOL CALLBACK EnumWindowsProc(
         SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(type ? IDC_BUTTON3 : IDC_BUTTON4, BN_CLICKED), 0);
 
         //反馈进度
-        hV2DHook = SetWindowsHookExW(WH_CALLWNDPROC, V2DHookProc, GetModuleHandle(NULL), GetWindowThreadProcessId(hwnd, NULL));
+        //hV2DHook = SetWindowsHookExW(WH_CALLWNDPROC, V2DHookProc, LoadLibraryA("msg2ventoy.dll"), GetWindowThreadProcessId(hwnd, NULL));
+
+        DWORD test = GetLastError();
+        printf("%ud", test);
 
         return 0;
     }
@@ -79,7 +76,7 @@ BOOL CALLBACK EnumWindowsProc(
 
 __declspec(dllexport) int RunVentoy2Disk(unsigned short n, unsigned short type, PCallerCallback CallerCallback)
 {
-    g_CallerCallback = CallerCallback;
+    //g_CallerCallback = CallerCallback;
     EnumWindows(EnumWindowsProc, MAKELPARAM(n, type));
 
     return 0;
@@ -87,10 +84,10 @@ __declspec(dllexport) int RunVentoy2Disk(unsigned short n, unsigned short type, 
 
 __declspec(dllexport) void FinishVentoy2Disk()
 {
-    UnhookWindowsHookEx(hV2DHook);
+    //UnhookWindowsHookEx(hV2DHook);
 }
 
-void DefaultCallback(int CurrentProgress)
+int DefaultCallback(int CurrentProgress)
 {
     printf("%d\n", CurrentProgress);
 }
