@@ -9,25 +9,35 @@
 #define UPDATE  1
 
 HWND hCombox;
+HMODULE hDll;
 
 #define IDC_COMBO1                      1001
 #define IDC_BUTTON3                     1004
 #define IDC_BUTTON4                     1005
 #define IDC_COMMAND1                    1024
 
-typedef int (WINAPI* PMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
-typedef int (* PCallerCallback)(int CurrentProgress);
+typedef int(WINAPI*PMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
+typedef int(*PCallerCallback)(int CurrentProgress);
+typedef BOOL(*PSetV2dHook)(DWORD V2dThreadId);
+typedef BOOL(*PDropV2dHook)();
+typedef int(*PGetCurrentProgress)(DWORD V2dThreadId, PCallerCallback Callback);
 
+PSetV2dHook SetV2dHook;
+PDropV2dHook DropV2dHook;
+PGetCurrentProgress GetCurrentProgress;
+PCallerCallback g_CallerCallback;
 
-LRESULT CALLBACK V2DHookProc(int code, WPARAM wParam, LPARAM lParam)
+int DllGetCurrentProgress(DWORD V2dThreadId, PCallerCallback Callback)
 {
-    //TODO: 获取并输出进度
-    //TODO: 拦截MessageBoxW
-    //DialogBox(g_hInst, MAKEINTRESOURCE(IDD_DIALOG2), hWnd, PartDialogProc); 输yes的确认框
-    puts("in hook proc");
-    getchar();
+    //TODO: SetV2dHook
+    //TODO: 命名管道通信
+    //TODO: 得到结果传给Callback
+    //（dll顺便hook messagebox）
+}
 
-    return CallNextHookEx(NULL, code, wParam, lParam);
+int ExeGetCurrentProgress(DWORD V2dThreadId, PCallerCallback Callback)
+{
+    //TODO: 直接循环给v2d发消息获得进度
 }
 
 BOOL CALLBACK EnumWindowsProc(
@@ -65,9 +75,9 @@ BOOL CALLBACK EnumWindowsProc(
 
         //反馈进度
         //hV2DHook = SetWindowsHookExW(WH_CALLWNDPROC, V2DHookProc, LoadLibraryA("msg2ventoy.dll"), GetWindowThreadProcessId(hwnd, NULL));
-
-        DWORD test = GetLastError();
-        printf("%ud", test);
+        //DWORD test = GetLastError();
+        //printf("%ud", test);
+        GetCurrentProgress(GetWindowThreadProcessId(hwnd, NULL), g_CallerCallback);
 
         return 0;
     }
@@ -76,8 +86,22 @@ BOOL CALLBACK EnumWindowsProc(
 
 __declspec(dllexport) int RunVentoy2Disk(unsigned short n, unsigned short type, PCallerCallback CallerCallback)
 {
-    //g_CallerCallback = CallerCallback;
+    g_CallerCallback = CallerCallback;
+
+    if ((hDll = LoadLibraryW(L"hook.dll")) != NULL)
+    {
+        SetV2dHook = (PSetV2dHook)GetProcAddress(hDll, "SetV2dHook");
+        DropV2dHook = (PDropV2dHook)GetProcAddress(hDll, "DropV2dHook");
+
+        GetCurrentProgress = DllGetCurrentProgress;
+    }
+    else
+    {
+        GetCurrentProgress = ExeGetCurrentProgress;
+    }
+
     EnumWindows(EnumWindowsProc, MAKELPARAM(n, type));
+
 
     return 0;
 }
@@ -85,6 +109,7 @@ __declspec(dllexport) int RunVentoy2Disk(unsigned short n, unsigned short type, 
 __declspec(dllexport) void FinishVentoy2Disk()
 {
     //UnhookWindowsHookEx(hV2DHook);
+    FreeLibrary(hDll);
 }
 
 int DefaultCallback(int CurrentProgress)
@@ -102,8 +127,7 @@ int main()
     puts("请输入进行的操作（0 = install，1 = update）");
     scanf("%hd", &type);
 
-    HMODULE hmod = LoadLibraryA("msg2ventoy.exe");
-    int (*r)(unsigned short, unsigned short, PCallerCallback) = (int(*)(unsigned short, unsigned short, PCallerCallback))GetProcAddress(hmod, "RunVentoy2Disk");
-    
-    return r(n, type, DefaultCallback);
+    int s = RunVentoy2Disk(n, type, DefaultCallback);
+    FinishVentoy2Disk();
+    return s;
 }
