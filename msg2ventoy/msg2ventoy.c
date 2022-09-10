@@ -128,6 +128,6 @@ int main()
     scanf("%hd", &type);
 
     int s = RunVentoy2Disk(n, type, DefaultCallback);
-    FinishVentoy2Disk();
+    //FinishVentoy2Disk();
     return s;
 }
