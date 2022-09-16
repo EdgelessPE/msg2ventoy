@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <Windows.h>
+#include <CommCtrl.h>
 
 
 #define INSTALL 0
@@ -11,33 +12,79 @@
 HWND hCombox;
 HMODULE hDll;
 
-#define IDC_COMBO1                      1001
-#define IDC_BUTTON3                     1004
-#define IDC_BUTTON4                     1005
-#define IDC_COMMAND1                    1024
+#define IDC_COMBO1                      1001    //下拉选项
+#define IDC_BUTTON3                     1004    //更新
+#define IDC_BUTTON4                     1005    //安装
+#define IDC_COMMAND1                    1024    //刷新
+#define IDC_PROGRESS1                   1006    //进度条
 
 typedef int(WINAPI*PMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
-typedef int(*PCallerCallback)(int CurrentProgress);
+typedef int(*PCallerCallback)(unsigned int CurrentProgress);
 typedef BOOL(*PSetV2dHook)(DWORD V2dThreadId);
 typedef BOOL(*PDropV2dHook)();
-typedef int(*PGetCurrentProgress)(DWORD V2dThreadId, PCallerCallback Callback);
+typedef int(*PGetCurrentProgress)(HWND V2dhWnd, PCallerCallback Callback);
 
 PSetV2dHook SetV2dHook;
 PDropV2dHook DropV2dHook;
 PGetCurrentProgress GetCurrentProgress;
 PCallerCallback g_CallerCallback;
 
-int DllGetCurrentProgress(DWORD V2dThreadId, PCallerCallback Callback)
+/*
+typedef enum PROGRESS_POINT
+{
+    PT_START = 0,
+    PT_LOCK_FOR_CLEAN = 8,
+    PT_DEL_ALL_PART,
+    PT_LOCK_FOR_WRITE,
+    PT_FORMAT_PART1,
+    PT_LOCK_VOLUME = PT_FORMAT_PART1,
+    PT_FORMAT_PART2,
+
+    PT_WRITE_VENTOY_START,
+    PT_WRITE_VENTOY_FINISH = PT_WRITE_VENTOY_START + 32,
+
+    PT_WRITE_STG1_IMG,
+    PT_WRITE_PART_TABLE,
+    PT_MOUNT_VOLUME,
+
+    PT_FINISH
+}PROGRESS_POINT;
+*/
+
+int DllGetCurrentProgress(HWND V2dhWnd, PCallerCallback Callback)
 {
     //TODO: SetV2dHook
     //TODO: 命名管道通信
     //TODO: 得到结果传给Callback
     //（dll顺便hook messagebox）
+    GetWindowThreadProcessId(V2dhWnd, NULL);
 }
 
-int ExeGetCurrentProgress(DWORD V2dThreadId, PCallerCallback Callback)
+int ExeGetCurrentProgress(HWND V2dhWnd, PCallerCallback Callback)
 {
-    //TODO: 直接循环给v2d发消息获得进度
+    HWND hProgress = GetDlgItem(V2dhWnd, IDC_PROGRESS1);
+    UINT CurrentProgress = 0;
+    UINT tmp = 0;
+
+    Callback(0); //PT_START
+    while (1)
+    {
+        CurrentProgress = (UINT)SendMessageA(hProgress, PBM_GETPOS, 0, 0);
+        if (CurrentProgress > tmp)
+        {
+            tmp = CurrentProgress;
+            Callback(CurrentProgress);
+
+            if (CurrentProgress == 49)  //PT_FINISH
+            {
+                break;
+            }
+        }
+
+        Sleep(1);
+    }
+
+    return 0;
 }
 
 BOOL CALLBACK EnumWindowsProc(
@@ -77,7 +124,7 @@ BOOL CALLBACK EnumWindowsProc(
         //hV2DHook = SetWindowsHookExW(WH_CALLWNDPROC, V2DHookProc, LoadLibraryA("msg2ventoy.dll"), GetWindowThreadProcessId(hwnd, NULL));
         //DWORD test = GetLastError();
         //printf("%ud", test);
-        GetCurrentProgress(GetWindowThreadProcessId(hwnd, NULL), g_CallerCallback);
+        GetCurrentProgress(hwnd, g_CallerCallback);
 
         return 0;
     }
@@ -112,9 +159,9 @@ __declspec(dllexport) void FinishVentoy2Disk()
     FreeLibrary(hDll);
 }
 
-int DefaultCallback(int CurrentProgress)
+int DefaultCallback(unsigned int CurrentProgress)
 {
-    printf("%d\n", CurrentProgress);
+    printf("%u\n", CurrentProgress);
 }
 
 int main()
