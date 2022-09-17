@@ -20,7 +20,7 @@ HMODULE hDll;
 
 typedef int(WINAPI*PMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
 typedef int(*PCallerCallback)(unsigned int CurrentProgress);
-typedef BOOL(*PSetV2dHook)(DWORD V2dThreadId);
+typedef BOOL(*PSetV2dHook)(DWORD V2dThreadId, LPTHREAD_START_ROUTINE ThreadProc);
 typedef BOOL(*PDropV2dHook)();
 typedef int(*PGetCurrentProgress)(HWND V2dhWnd, PCallerCallback Callback);
 
@@ -51,13 +51,23 @@ typedef enum PROGRESS_POINT
 }PROGRESS_POINT;
 */
 
+DWORD WINAPI ExeThreadProc(
+    _In_ LPVOID lpParameter
+)
+{
+    g_CallerCallback((UINT)lpParameter);
+    return 1;
+}
+
 int DllGetCurrentProgress(HWND V2dhWnd, PCallerCallback Callback)
 {
     //TODO: SetV2dHook
-    //TODO: 命名管道通信
-    //TODO: 得到结果传给Callback
     //（dll顺便hook messagebox）
-    GetWindowThreadProcessId(V2dhWnd, NULL);
+    //CreateRemoteThread通信
+
+    SetV2dHook(GetWindowThreadProcessId(V2dhWnd, NULL), (LPTHREAD_START_ROUTINE)ExeThreadProc);
+
+    return 0;
 }
 
 int ExeGetCurrentProgress(HWND V2dhWnd, PCallerCallback Callback)
