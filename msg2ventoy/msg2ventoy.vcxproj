@@ -145,6 +145,9 @@
   <ItemGroup>
     <ClCompile Include="msg2ventoy.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="msg2ventoy.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
