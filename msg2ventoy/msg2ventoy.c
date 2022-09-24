@@ -24,10 +24,24 @@ typedef BOOL(*PSetV2dHook)(DWORD V2dThreadId, LPTHREAD_START_ROUTINE ThreadProc)
 typedef BOOL(*PDropV2dHook)();
 typedef int(*PGetCurrentProgress)(HWND V2dhWnd, PCallerCallback Callback);
 
+typedef enum _M2VProgress
+{
+    STATUS_FINDV2DWND,
+    STATUS_FRESH,
+    STATUS_SELECTDISK,
+    STATUS_START,
+
+    WARNING_GetDlgItem
+}M2VProgress;
+typedef void(*PM2VProgressCallback)(M2VProgress CurrentProgress);
+
 PSetV2dHook SetV2dHook;
 PDropV2dHook DropV2dHook;
 PGetCurrentProgress GetCurrentProgress;
 PCallerCallback g_CallerCallback;
+PM2VProgressCallback g_M2VProgressCallback;
+
+
 
 /*
 typedef enum PROGRESS_POINT
@@ -50,6 +64,8 @@ typedef enum PROGRESS_POINT
     PT_FINISH
 }PROGRESS_POINT;
 */
+
+
 
 DWORD WINAPI ExeThreadProc(
     _In_ LPVOID lpParameter
@@ -109,26 +125,27 @@ BOOL CALLBACK EnumWindowsProc(
     GetWindowTextW(hwnd, buffer, 30);
     if (wcsstr(buffer, L"Ventoy2Disk") != NULL)
     {
-        puts("find Ventoy2Disk window");
+        g_M2VProgressCallback(STATUS_FINDV2DWND);
         hCombox = GetDlgItem(hwnd, IDC_COMBO1);
         if (hCombox == NULL)
         {
-            puts("GetDlgItem: 无效的对话框句柄或不存在的控件");
+            g_M2VProgressCallback(WARNING_GetDlgItem);
             return 1;
         }
         //ShowWindow(hwnd, SW_MINIMIZE);
         
         //刷新
         SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_COMMAND1, BN_CLICKED), 0);
+        g_M2VProgressCallback(STATUS_FRESH);
 
         //选择磁盘
         SendMessageW(hCombox, CB_SETCURSEL, n, 0);
         SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_COMBO1, CBN_SELCHANGE), (LPARAM)hCombox);
-
-        puts("Select disk ok");
+        g_M2VProgressCallback(STATUS_SELECTDISK);
 
         //按下制作/更新按钮
         SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(type ? IDC_BUTTON3 : IDC_BUTTON4, BN_CLICKED), 0);
+        g_M2VProgressCallback(STATUS_START);
 
         //反馈进度
         //hV2DHook = SetWindowsHookExW(WH_CALLWNDPROC, V2DHookProc, LoadLibraryA("msg2ventoy.dll"), GetWindowThreadProcessId(hwnd, NULL));
@@ -141,9 +158,10 @@ BOOL CALLBACK EnumWindowsProc(
     return 1;
 }
 
-__declspec(dllexport) int RunVentoy2Disk(unsigned short n, unsigned short type, PCallerCallback CallerCallback)
+__declspec(dllexport) int RunVentoy2Disk(unsigned short n, unsigned short type, PCallerCallback CallerCallback, PM2VProgressCallback M2VProgressCallback)
 {
     g_CallerCallback = CallerCallback;
+    g_M2VProgressCallback = M2VProgressCallback;
 
     if ((hDll = LoadLibraryW(L"hook.dll")) != NULL)
     {
@@ -174,6 +192,11 @@ int DefaultCallback(unsigned int CurrentProgress)
     printf("%u\n", CurrentProgress);
 }
 
+void DefaultM2VProgress(M2VProgress CurrentProgress)
+{
+    printf("m2v: %d\n", CurrentProgress);
+}
+
 int main()
 {
     INT16 n;
@@ -184,7 +207,7 @@ int main()
     puts("请输入进行的操作（0 = install，1 = update）");
     scanf("%hd", &type);
 
-    int s = RunVentoy2Disk(n, type, DefaultCallback);
+    int s = RunVentoy2Disk(n, type, DefaultCallback, DefaultM2VProgress);
     //FinishVentoy2Disk();
     return s;
 }
