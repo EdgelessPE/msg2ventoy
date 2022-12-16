@@ -5,9 +5,7 @@
 #include <Windows.h>
 #include <CommCtrl.h>
 
-
-#define INSTALL 0
-#define UPDATE  1
+#include "msg2ventoy.h"
 
 HWND hCombox;
 HMODULE hDll;
@@ -17,31 +15,21 @@ HMODULE hDll;
 #define IDC_BUTTON4                     1005    //安装
 #define IDC_COMMAND1                    1024    //刷新
 #define IDC_PROGRESS1                   1006    //进度条
+#define ID_PARTSTYLE_MBR                40012
+#define ID_PARTSTYLE_GPT                40013
 
 typedef int(WINAPI*PMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
-typedef int(*PCallerCallback)(unsigned int CurrentProgress);
 typedef BOOL(*PSetV2dHook)(DWORD V2dThreadId, LPTHREAD_START_ROUTINE ThreadProc);
 typedef BOOL(*PDropV2dHook)();
 typedef int(*PGetCurrentProgress)(HWND V2dhWnd, PCallerCallback Callback);
 
-typedef enum _M2VProgress
-{
-    STATUS_FINDV2DWND,
-    STATUS_FRESH,
-    STATUS_SELECTDISK,
-    STATUS_START,
 
-    WARNING_GetDlgItem
-}M2VProgress;
-typedef void(*PM2VProgressCallback)(M2VProgress CurrentProgress);
 
 PSetV2dHook SetV2dHook;
 PDropV2dHook DropV2dHook;
 PGetCurrentProgress GetCurrentProgress;
 PCallerCallback g_CallerCallback;
 PM2VProgressCallback g_M2VProgressCallback;
-
-
 
 /*
 typedef enum PROGRESS_POINT
@@ -82,7 +70,7 @@ int DllGetCurrentProgress(HWND V2dhWnd, PCallerCallback Callback)
     //CreateRemoteThread通信
 
     SetV2dHook(GetWindowThreadProcessId(V2dhWnd, NULL), (LPTHREAD_START_ROUTINE)ExeThreadProc);
-
+    
     return 0;
 }
 
@@ -107,7 +95,7 @@ int ExeGetCurrentProgress(HWND V2dhWnd, PCallerCallback Callback)
             }
         }
 
-        Sleep(1);
+        Sleep(50);
     }
 
     return 0;
@@ -118,8 +106,7 @@ BOOL CALLBACK EnumWindowsProc(
     _In_ LPARAM lParam
 )
 {
-    UINT n = LOWORD(lParam);
-    UINT type = HIWORD(lParam);
+    PM2V_PARAMS params = (PM2V_PARAMS)lParam;
 
     WCHAR buffer[31] = { 0 };
     GetWindowTextW(hwnd, buffer, 30);
@@ -138,13 +125,28 @@ BOOL CALLBACK EnumWindowsProc(
         SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_COMMAND1, BN_CLICKED), 0);
         g_M2VProgressCallback(STATUS_FRESH);
 
+        Sleep(100);
+
         //选择磁盘
-        SendMessageW(hCombox, CB_SETCURSEL, n, 0);
+        SendMessageW(hCombox, CB_SETCURSEL, params->WhichDevice, 0);
         SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_COMBO1, CBN_SELCHANGE), (LPARAM)hCombox);
         g_M2VProgressCallback(STATUS_SELECTDISK);
 
+        //安全启动
+        if (!params->isSecureBoot)
+        {
+            SendMessageW(hwnd, WM_COMMAND, 0, 0);
+            g_M2VProgressCallback(STATUS_SECUREBOOT);
+        }
+
+        //分区类型（选择gpt时有未知bug）
+        SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(((params->PartitionStyle & 1) ? ID_PARTSTYLE_GPT : ID_PARTSTYLE_MBR), 0), 0);
+        g_M2VProgressCallback(STATUS_PARTSTYLE);
+
+        Sleep(100);
+
         //按下制作/更新按钮
-        SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(type ? IDC_BUTTON3 : IDC_BUTTON4, BN_CLICKED), 0);
+        SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM((params->MakeType & 1) ? IDC_BUTTON3 : IDC_BUTTON4, BN_CLICKED), 0);
         g_M2VProgressCallback(STATUS_START);
 
         //反馈进度
@@ -158,8 +160,14 @@ BOOL CALLBACK EnumWindowsProc(
     return 1;
 }
 
-__declspec(dllexport) int RunVentoy2Disk(unsigned short n, unsigned short type, PCallerCallback CallerCallback, PM2VProgressCallback M2VProgressCallback)
+__declspec(dllexport) int RunVentoy2Disk(PM2V_PARAMS params, PCallerCallback CallerCallback, PM2VProgressCallback M2VProgressCallback)
 {
+    if (params->SizeOfM2V_PARAMS != sizeof(M2V_PARAMS))
+    {
+        M2VProgressCallback(ERROR_SizeOfParamsStruct);
+        return 1;
+    }
+
     g_CallerCallback = CallerCallback;
     g_M2VProgressCallback = M2VProgressCallback;
 
@@ -175,7 +183,7 @@ __declspec(dllexport) int RunVentoy2Disk(unsigned short n, unsigned short type, 
         GetCurrentProgress = ExeGetCurrentProgress;
     }
 
-    EnumWindows(EnumWindowsProc, MAKELPARAM(n, type));
+    EnumWindows(EnumWindowsProc, (LPARAM)params);
 
 
     return 0;
@@ -190,6 +198,7 @@ __declspec(dllexport) void FinishVentoy2Disk()
 int DefaultCallback(unsigned int CurrentProgress)
 {
     printf("%u\n", CurrentProgress);
+    return 0;
 }
 
 void DefaultM2VProgress(M2VProgress CurrentProgress)
@@ -201,13 +210,28 @@ int main()
 {
     INT16 n;
     INT16 type;
+    INT16 isSecureBoot = TRUE;
+    INT16 ps = 0;
 
     puts("请输入盘符排序第n个（从0开始）");
     scanf("%hd", &n);
     puts("请输入进行的操作（0 = install，1 = update）");
     scanf("%hd", &type);
+    puts("请输入是否启用安全启动（0 = 否，1 = 是）");
+    scanf("%hd", &isSecureBoot);
+    puts("请输入磁盘分区类型（0 = MBR，1 = GPT）");
+    scanf("%hd", &ps);
 
-    int s = RunVentoy2Disk(n, type, DefaultCallback, DefaultM2VProgress);
-    //FinishVentoy2Disk();
+    PM2V_PARAMS p = (PM2V_PARAMS)malloc(sizeof(M2V_PARAMS));
+    p->SizeOfM2V_PARAMS = sizeof(M2V_PARAMS);
+    p->WhichDevice = n;
+    p->MakeType = type;
+    p->isSecureBoot = isSecureBoot;
+    p->PartitionStyle = ps | 0x10;
+
+    int s = RunVentoy2Disk(p, DefaultCallback, DefaultM2VProgress);
+    
+    free(p);
+
     return s;
 }
